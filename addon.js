@@ -7,7 +7,7 @@ const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const manifest = {
     id: "community.nuvio.westernanimation",
     version: "1.2.0",
-    name: "Animation Movie Hub",
+    name: "Animation Movies",
     description: "Dedicated catalogs for Hollywood & Western animation movies. Explore Pixar, DreamWorks, Disney, Illumination, and more (No Anime).",
     resources: ["catalog", "meta"],
     types: ["movie"],
@@ -50,12 +50,6 @@ const manifest = {
         },
         {
             type: "movie",
-            id: "animation_family",
-            name: "Family Movie Night",
-            extra: [{ name: "skip", isRequired: false }]
-        },
-        {
-            type: "movie",
             id: "animation_action",
             name: "Action & Adventure",
             extra: [{ name: "skip", isRequired: false }]
@@ -63,7 +57,7 @@ const manifest = {
         {
             type: "movie",
             id: "animation_golden_age",
-            name: "Golden Age (90s & 2000s)",
+            name: "90s & 2000s",
             extra: [{ name: "skip", isRequired: false }]
         }
     ]
@@ -92,8 +86,6 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
         url += "&with_companies=6704&sort_by=popularity.desc";
     } else if (id === "animation_disney") {
         url += "&with_companies=2&sort_by=popularity.desc";
-    } else if (id === "animation_family") {
-        url += "&certification_country=US&certification.lte=PG&sort_by=popularity.desc";
     } else if (id === "animation_action") {
         genres.push("28"); // Action
         url += "&sort_by=popularity.desc";
