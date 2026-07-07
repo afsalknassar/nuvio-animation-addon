@@ -6,9 +6,9 @@ const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
 const manifest = {
     id: "community.nuvio.westernanimation",
-    version: "1.1.0",
+    version: "1.2.0",
     name: "Animation Movie Hub",
-    description: "Dedicated catalogs for Hollywood & Western animation movies like Minions, Pixar, and Disney (No Anime). Feature-rich categories.",
+    description: "Dedicated catalogs for Hollywood & Western animation movies. Explore Pixar, DreamWorks, Disney, Illumination, and more (No Anime).",
     resources: ["catalog", "meta"],
     types: ["movie"],
     catalogs: [
@@ -20,32 +20,50 @@ const manifest = {
         },
         {
             type: "movie",
-            id: "animation_popular",
-            name: "Most Popular",
+            id: "animation_top_rated",
+            name: "Top Rated",
             extra: [{ name: "skip", isRequired: false }]
         },
         {
             type: "movie",
-            id: "animation_top_rated",
-            name: "Highest Rated",
+            id: "animation_pixar",
+            name: "Pixar Collection",
+            extra: [{ name: "skip", isRequired: false }]
+        },
+        {
+            type: "movie",
+            id: "animation_dreamworks",
+            name: "DreamWorks Classics",
+            extra: [{ name: "skip", isRequired: false }]
+        },
+        {
+            type: "movie",
+            id: "animation_illumination",
+            name: "Illumination Hits",
+            extra: [{ name: "skip", isRequired: false }]
+        },
+        {
+            type: "movie",
+            id: "animation_disney",
+            name: "Walt Disney",
+            extra: [{ name: "skip", isRequired: false }]
+        },
+        {
+            type: "movie",
+            id: "animation_family",
+            name: "Family Movie Night",
             extra: [{ name: "skip", isRequired: false }]
         },
         {
             type: "movie",
             id: "animation_action",
-            name: "Action",
+            name: "Action & Adventure",
             extra: [{ name: "skip", isRequired: false }]
         },
         {
             type: "movie",
-            id: "animation_comedy",
-            name: "Comedy",
-            extra: [{ name: "skip", isRequired: false }]
-        },
-        {
-            type: "movie",
-            id: "animation_adventure",
-            name: "Adventure",
+            id: "animation_golden_age",
+            name: "Golden Age (90s & 2000s)",
             extra: [{ name: "skip", isRequired: false }]
         }
     ]
@@ -63,24 +81,24 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
     let genres = ["16"]; // 16 is Animation
 
     if (id === "animation_trending") {
-        // Trending: recently released and popular
-        const dateOffset = new Date();
-        dateOffset.setMonth(dateOffset.getMonth() - 2); // Movies from the last 2 months
-        const dateStr = dateOffset.toISOString().split('T')[0];
-        url += `&sort_by=popularity.desc&primary_release_date.gte=${dateStr}`;
-    } else if (id === "animation_popular") {
         url += "&sort_by=popularity.desc";
     } else if (id === "animation_top_rated") {
-        url += "&sort_by=vote_average.desc&vote_count.gte=500";
+        url += "&sort_by=vote_average.desc&vote_count.gte=1000";
+    } else if (id === "animation_pixar") {
+        url += "&with_companies=3&sort_by=popularity.desc";
+    } else if (id === "animation_dreamworks") {
+        url += "&with_companies=521&sort_by=popularity.desc";
+    } else if (id === "animation_illumination") {
+        url += "&with_companies=6704&sort_by=popularity.desc";
+    } else if (id === "animation_disney") {
+        url += "&with_companies=2&sort_by=popularity.desc";
+    } else if (id === "animation_family") {
+        url += "&certification_country=US&certification.lte=PG&sort_by=popularity.desc";
     } else if (id === "animation_action") {
         genres.push("28"); // Action
         url += "&sort_by=popularity.desc";
-    } else if (id === "animation_comedy") {
-        genres.push("35"); // Comedy
-        url += "&sort_by=popularity.desc";
-    } else if (id === "animation_adventure") {
-        genres.push("12"); // Adventure
-        url += "&sort_by=popularity.desc";
+    } else if (id === "animation_golden_age") {
+        url += "&primary_release_date.gte=1990-01-01&primary_release_date.lte=2009-12-31&sort_by=popularity.desc";
     }
 
     url += `&with_genres=${genres.join(",")}`;
