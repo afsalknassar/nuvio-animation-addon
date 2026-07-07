@@ -90,4 +90,6 @@ builder.defineMetaHandler(async ({ type, id }) => {
     }
 });
 
-serveHTTP(builder.getInterface(), { port: 7000 });
+const port = process.env.PORT || 7000;
+serveHTTP(builder.getInterface(), { port: port });
+console.log(`Addon running on port ${port}`);
