@@ -124,15 +124,15 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
     if (type === "tv") {
         if (id === "iptv_events") {
             const data = await getProxyData("/api/events");
-            if (data?.value) {
-                return { metas: data.value.map(eventToMeta) };
+            if (Array.isArray(data)) {
+                return { metas: data.map(eventToMeta) };
             }
         }
         if (id === "iptv_channels") {
             const data = await getProxyData("/api/channels");
-            if (data?.value) {
+            if (Array.isArray(data)) {
                 // Filter out hidden channels and map to meta
-                const activeChannels = data.value.filter(c => !c.hidden && c.online !== false);
+                const activeChannels = data.filter(c => !c.hidden && c.online !== false);
                 return { metas: activeChannels.map(channelToMeta) };
             }
         }
@@ -173,8 +173,8 @@ builder.defineMetaHandler(async ({ type, id }) => {
     if (type === "tv" && id.startsWith("iptv_event:")) {
         const channelId = id.replace("iptv_event:", "");
         const data = await getProxyData("/api/events");
-        if (data?.value) {
-            const event = data.value.find(e => e.channelId === channelId);
+        if (Array.isArray(data)) {
+            const event = data.find(e => e.channelId === channelId);
             if (event) return { meta: eventToMeta(event) };
         }
     }
@@ -182,8 +182,8 @@ builder.defineMetaHandler(async ({ type, id }) => {
     if (type === "tv" && id.startsWith("iptv_channel:")) {
         const slug = id.replace("iptv_channel:", "");
         const data = await getProxyData("/api/channels");
-        if (data?.value) {
-            const channel = data.value.find(c => c.slug === slug);
+        if (Array.isArray(data)) {
+            const channel = data.find(c => c.slug === slug);
             if (channel) return { meta: channelToMeta(channel) };
         }
     }
