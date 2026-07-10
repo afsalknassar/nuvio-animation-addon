@@ -1,152 +1,257 @@
 import pkg from "stremio-addon-sdk";
 const { addonBuilder, serveHTTP } = pkg;
 
-const TMDB_API_KEY = process.env.TMDB_API_KEY || "";
+// ─── Config ───────────────────────────────────────────────────────────────────
+const TMDB_API_KEY = process.env.TMDB_API_KEY || ""; 
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
+const PROXY_URL = process.env.PROXY_URL || "https://afsalknassar-cinepro-org.hf.space";
 
+// ─── Manifest ─────────────────────────────────────────────────────────────────
 const manifest = {
     id: "community.nuvio.westernanimation",
-    version: "1.2.0",
-    name: "Animation Movies",
-    description: "Dedicated catalogs for Hollywood & Western animation movies. Explore Pixar, DreamWorks, Disney, Illumination, and more (No Anime).",
-    resources: ["catalog", "meta"],
-    types: ["movie"],
+    version: "3.2.0",
+    name: "Animation & Live TV",
+    description: "Hollywood & Western animation movies + Live sports & categorized TV streaming.",
+    resources: ["catalog", "meta", "stream"],
+    types: ["movie", "tv"],
+    idPrefixes: ["tmdb:", "iptv_event:", "iptv_channel:"],
     catalogs: [
-        {
-            type: "movie",
-            id: "animation_trending",
-            name: "Trending",
-            extra: [{ name: "skip", isRequired: false }]
+        // ── Animation ────────────────────────────────────────────────────────
+        { type: "movie", id: "animation_trending",     name: "🎬 Trending Animation", extra: [{ name: "skip", isRequired: false }] },
+        { type: "movie", id: "animation_top_rated",    name: "⭐ Top Rated Animation", extra: [{ name: "skip", isRequired: false }] },
+        { type: "movie", id: "animation_pixar",        name: "✨ Pixar Collection", extra: [{ name: "skip", isRequired: false }] },
+        { type: "movie", id: "animation_dreamworks",   name: "🐉 DreamWorks Classics", extra: [{ name: "skip", isRequired: false }] },
+        { type: "movie", id: "animation_illumination", name: "🎪 Illumination Hits", extra: [{ name: "skip", isRequired: false }] },
+        { type: "movie", id: "animation_disney",       name: "🏰 Walt Disney", extra: [{ name: "skip", isRequired: false }] },
+        { type: "movie", id: "animation_action",       name: "💥 Action & Adventure", extra: [{ name: "skip", isRequired: false }] },
+        
+        // ── Live Sports & TV ──────────────────────────────────────────────────
+        { 
+            type: "tv", 
+            id: "iptv_events",   
+            name: "🏆 Live Sports Events",
+            // Allow filtering by Sport category
+            extra: [{ name: "genre", isRequired: false }] 
         },
-        {
-            type: "movie",
-            id: "animation_top_rated",
-            name: "Top Rated",
-            extra: [{ name: "skip", isRequired: false }]
-        },
-        {
-            type: "movie",
-            id: "animation_pixar",
-            name: "Pixar Collection",
-            extra: [{ name: "skip", isRequired: false }]
-        },
-        {
-            type: "movie",
-            id: "animation_dreamworks",
-            name: "DreamWorks Classics",
-            extra: [{ name: "skip", isRequired: false }]
-        },
-        {
-            type: "movie",
-            id: "animation_illumination",
-            name: "Illumination Hits",
-            extra: [{ name: "skip", isRequired: false }]
-        },
-        {
-            type: "movie",
-            id: "animation_disney",
-            name: "Walt Disney",
-            extra: [{ name: "skip", isRequired: false }]
-        },
-        {
-            type: "movie",
-            id: "animation_action",
-            name: "Action & Adventure",
-            extra: [{ name: "skip", isRequired: false }]
-        },
-        {
-            type: "movie",
-            id: "animation_golden_age",
-            name: "90s & 2000s",
-            extra: [{ name: "skip", isRequired: false }]
+        { 
+            type: "tv", 
+            id: "iptv_channels", 
+            name: "📺 Live TV Channels",
+            // Allow filtering by TV Category
+            extra: [{ name: "genre", isRequired: false }] 
         }
-    ]
+    ],
+    behaviorHints: {
+        configurable: false,
+        newEpisodeNotifications: false,
+    },
 };
 
+// ─── Proxy Helpers ────────────────────────────────────────────────────────────
+
+async function getProxyData(path) {
+    try {
+        const res = await fetch(`${PROXY_URL}${path}`);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (err) {
+        console.error(`[Proxy API Error] ${path}:`, err.message);
+        return null;
+    }
+}
+
+// Convert proxy event to Stremio Meta
+function eventToMeta(event) {
+    const timeStr = event.startTime 
+        ? new Date(event.startTime).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) 
+        : "";
+    
+    return {
+        id: `iptv_event:${event.channelId}`,
+        type: "tv",
+        name: event.name,
+        poster: null,
+        background: null,
+        description: `Category: ${event.category}\nStatus: ${event.statusDetail?.detail || "Unknown"}\nStart: ${timeStr}`,
+        genres: [event.category],
+    };
+}
+
+// Convert proxy channel to Stremio Meta
+function channelToMeta(channel) {
+    return {
+        id: `iptv_channel:${channel.slug}`,
+        type: "tv",
+        name: channel.name,
+        poster: channel.hasSvg ? `https://img.rebeliptv.net/channel/${channel.slug}.png` : null,
+        description: `Categories: ${(channel.categories || []).join(", ")}`,
+        genres: channel.categories || [],
+    };
+}
+
+// ─── Builder ──────────────────────────────────────────────────────────────────
 const builder = new addonBuilder(manifest);
 
+// ── Catalog Handler ───────────────────────────────────────────────────────────
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
-    if (type !== "movie") return { metas: [] };
 
-    // Stremio passes extra.skip to load more items. TMDB uses pages (1 page = 20 items).
-    const page = extra && extra.skip ? Math.floor(extra.skip / 20) + 1 : 1;
-    let url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_original_language=en&page=${page}`;
+    // ── Movie catalogs (animation) ────────────────────────────────────────────
+    if (type === "movie") {
+        const page = extra?.skip ? Math.floor(extra.skip / 20) + 1 : 1;
+        let url = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&with_original_language=en&page=${page}`;
+        let genres = ["16"]; // Animation genre
 
-    let genres = ["16"]; // 16 is Animation
+        switch (id) {
+            case "animation_trending":     url += "&sort_by=popularity.desc"; break;
+            case "animation_top_rated":    url += "&sort_by=vote_average.desc&vote_count.gte=1000"; break;
+            case "animation_pixar":        url += "&with_companies=3&sort_by=popularity.desc"; break;
+            case "animation_dreamworks":   url += "&with_companies=521&sort_by=popularity.desc"; break;
+            case "animation_illumination": url += "&with_companies=6704&sort_by=popularity.desc"; break;
+            case "animation_disney":       url += "&with_companies=2&sort_by=popularity.desc"; break;
+            case "animation_action":       genres.push("28"); url += "&sort_by=popularity.desc"; break;
+            default: return { metas: [] };
+        }
 
-    if (id === "animation_trending") {
-        url += "&sort_by=popularity.desc";
-    } else if (id === "animation_top_rated") {
-        url += "&sort_by=vote_average.desc&vote_count.gte=1000";
-    } else if (id === "animation_pixar") {
-        url += "&with_companies=3&sort_by=popularity.desc";
-    } else if (id === "animation_dreamworks") {
-        url += "&with_companies=521&sort_by=popularity.desc";
-    } else if (id === "animation_illumination") {
-        url += "&with_companies=6704&sort_by=popularity.desc";
-    } else if (id === "animation_disney") {
-        url += "&with_companies=2&sort_by=popularity.desc";
-    } else if (id === "animation_action") {
-        genres.push("28"); // Action
-        url += "&sort_by=popularity.desc";
-    } else if (id === "animation_golden_age") {
-        url += "&primary_release_date.gte=1990-01-01&primary_release_date.lte=2009-12-31&sort_by=popularity.desc";
+        url += `&with_genres=${genres.join(",")}`;
+
+        try {
+            const res  = await fetch(url);
+            const data = await res.json();
+            const metas = (data.results || []).map(movie => ({
+                id         : `tmdb:${movie.id}`,
+                type       : "movie",
+                name       : movie.title,
+                poster     : movie.poster_path   ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`      : "",
+                background : movie.backdrop_path  ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}` : "",
+                description: movie.overview,
+                releaseInfo: movie.release_date ? movie.release_date.split("-")[0] : "",
+            }));
+            return { metas };
+        } catch (err) {
+            console.error("[animation catalog]", err);
+            return { metas: [] };
+        }
     }
 
-    url += `&with_genres=${genres.join(",")}`;
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        const movies = data.results || [];
-
-        // Map TMDB structure to Stremio/Nuvio's Expected Meta Format
-        const metas = movies.map(movie => ({
-            id: `tmdb:${movie.id}`,
-            type: "movie",
-            name: movie.title,
-            poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : "",
-            background: movie.backdrop_path ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}` : "",
-            description: movie.overview,
-            releaseInfo: movie.release_date ? movie.release_date.split("-")[0] : ""
-        }));
-
-        return { metas };
-    } catch (error) {
-        console.error("Error fetching catalogs:", error);
-        return { metas: [] };
+    // ── Proxy Catalogs (Sports & TV) ──────────────────────────────────────────
+    if (type === "tv") {
+        if (id === "iptv_events") {
+            const data = await getProxyData("/api/events");
+            if (Array.isArray(data)) {
+                // Filter active events
+                let activeEvents = data.filter(e => e.hasStream === true || e.streamOnline === true);
+                
+                // If user selected a genre (category) in Stremio dropdown, filter by it
+                if (extra?.genre) {
+                    activeEvents = activeEvents.filter(e => e.category === extra.genre);
+                }
+                
+                return { metas: activeEvents.map(eventToMeta) };
+            }
+        }
+        if (id === "iptv_channels") {
+            const data = await getProxyData("/api/channels");
+            if (Array.isArray(data)) {
+                // Filter active channels
+                let activeChannels = data.filter(c => !c.hidden && c.online !== false);
+                
+                // If user selected a genre (category) in Stremio dropdown, filter by it
+                if (extra?.genre) {
+                    activeChannels = activeChannels.filter(c => (c.categories || []).includes(extra.genre));
+                }
+                
+                return { metas: activeChannels.map(channelToMeta) };
+            }
+        }
     }
+
+    return { metas: [] };
 });
 
+// ── Meta Handler ──────────────────────────────────────────────────────────────
 builder.defineMetaHandler(async ({ type, id }) => {
-    if (type !== "movie" || !id.startsWith("tmdb:")) return { meta: {} };
 
-    const tmdbId = id.split(":")[1];
-    const url = `${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}`;
-
-    try {
-        const response = await fetch(url);
-        const movie = await response.json();
-
-        const meta = {
-            id: `tmdb:${movie.id}`,
-            type: "movie",
-            name: movie.title,
-            poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : "",
-            background: movie.backdrop_path ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}` : "",
-            description: movie.overview,
-            releaseInfo: movie.release_date ? movie.release_date.split("-")[0] : "",
-            runtime: movie.runtime ? `${movie.runtime} min` : "",
-            imdbRating: movie.vote_average ? movie.vote_average.toFixed(1) : ""
-        };
-
-        return { meta };
-    } catch (error) {
-        console.error("Error fetching meta details:", error);
-        return { meta: {} };
+    if (type === "movie" && id.startsWith("tmdb:")) {
+        const tmdbId = id.split(":")[1];
+        try {
+            const res   = await fetch(`${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}`);
+            const movie = await res.json();
+            return {
+                meta: {
+                    id         : `tmdb:${movie.id}`,
+                    type       : "movie",
+                    name       : movie.title,
+                    poster     : movie.poster_path   ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`      : "",
+                    background : movie.backdrop_path  ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}` : "",
+                    description: movie.overview,
+                    releaseInfo: movie.release_date ? movie.release_date.split("-")[0] : "",
+                    runtime    : movie.runtime ? `${movie.runtime} min` : "",
+                    imdbRating : movie.vote_average ? movie.vote_average.toFixed(1) : "",
+                },
+            };
+        } catch (err) {
+            console.error("[movie meta]", err);
+            return { meta: {} };
+        }
     }
+
+    if (type === "tv" && id.startsWith("iptv_event:")) {
+        const channelId = id.replace("iptv_event:", "");
+        const data = await getProxyData("/api/events");
+        if (Array.isArray(data)) {
+            const event = data.find(e => e.channelId === channelId);
+            if (event) return { meta: eventToMeta(event) };
+        }
+    }
+
+    if (type === "tv" && id.startsWith("iptv_channel:")) {
+        const slug = id.replace("iptv_channel:", "");
+        const data = await getProxyData("/api/channels");
+        if (Array.isArray(data)) {
+            const channel = data.find(c => c.slug === slug);
+            if (channel) return { meta: channelToMeta(channel) };
+        }
+    }
+
+    return { meta: {} };
 });
 
+// ── Stream Handler ────────────────────────────────────────────────────────────
+builder.defineStreamHandler(async ({ type, id }) => {
+
+    if (type === "movie") return { streams: [] };
+
+    // Streams for Events
+    if (type === "tv" && id.startsWith("iptv_event:")) {
+        const channelId = id.replace("iptv_event:", "");
+        return {
+            streams: [{
+                name: "🔴 RebelIPTV",
+                title: "Play Stream",
+                url: `${PROXY_URL}/stream/${channelId}.ts`,
+                behaviorHints: { notWebReady: false },
+            }]
+        };
+    }
+
+    // Streams for Channels
+    if (type === "tv" && id.startsWith("iptv_channel:")) {
+        const slug = id.replace("iptv_channel:", "");
+        return {
+            streams: [{
+                name: "📺 RebelIPTV",
+                title: "Play Live Channel",
+                url: `${PROXY_URL}/stream/${slug}.ts`,
+                behaviorHints: { notWebReady: false },
+            }]
+        };
+    }
+
+    return { streams: [] };
+});
+
+// ─── Start Server ─────────────────────────────────────────────────────────────
 const port = process.env.PORT || 7000;
-serveHTTP(builder.getInterface(), { port: port });
-console.log(`Addon running on port ${port}`);
+serveHTTP(builder.getInterface(), { port });
+console.log(`\n🚀 Animation & IPTV Addon running on http://localhost:${port}`);
+console.log(`📺 Install in Stremio: http://localhost:${port}/manifest.json\n`);
