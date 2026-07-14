@@ -1,5 +1,6 @@
+import express from "express";
 import pkg from "stremio-addon-sdk";
-const { addonBuilder, serveHTTP } = pkg;
+const { addonBuilder, getRouter } = pkg;
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || "";
 const TMDB_BASE_URL = "https://api.themoviedb.org/3";
@@ -147,6 +148,14 @@ builder.defineMetaHandler(async ({ type, id }) => {
     }
 });
 
-const port = process.env.PORT || 7000;
-serveHTTP(builder.getInterface(), { port: port });
-console.log(`Addon running on port ${port}`);
+// --- CUSTOM EXPRESS SERVER IMPLEMENTATION ---
+const port = process.env.PORT || 7860;
+const app = express();
+
+// Route Stremio requests through Express
+app.use(getRouter(builder.getInterface()));
+
+// Explicitly bind to 0.0.0.0 so Hugging Face can detect the running application
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Addon successfully running on http://0.0.0.0:${port}`);
+});
